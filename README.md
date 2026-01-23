@@ -1,0 +1,3 @@
+This tool allows you to sideload custom VRM avatars onto your Quest for use in hAI! Friend MR. At present, this feature requires a special version of hAI! Friend MR that is available only through limited testing and is not yet released to the general public.
+
+Users are responsible for ensuring that their use of any sideloaded VRM avatar complies with the terms and restrictions set by the avatar’s original author.
