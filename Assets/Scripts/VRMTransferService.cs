@@ -17,11 +17,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text;
 using System.Threading;
+using MessagePack;
 using Newtonsoft.Json;
 using TMPro;
-using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using Uralstech.AvLoader;
@@ -37,11 +36,12 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
     [SerializeField] private TMP_Text _ipInfoText;
 
     private byte[]? _rawAvatarModel;
+    private Texture2D? _fullRender, _bustRender;
     private AvMetadata _avatarMetadata;
     private CancellationTokenSource? _shareCts;
     private string _sessionAuthCode;
 
-    private bool IsReadyForExport => _rawAvatarModel.IsValid() && !string.IsNullOrEmpty(_avatarMetadata.Id);
+    private bool IsReadyForExport => _rawAvatarModel.IsValid() && _fullRender != null && _bustRender != null && !string.IsNullOrEmpty(_avatarMetadata.Id);
     
     private CustomLogger logger;
     protected override void Awake()
@@ -72,6 +72,13 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             _avatarMetadata = default;
         };
 
+        VRMFilePicker.Instance.OnAvatarRendersLoaded += (full, bust) =>
+        {
+            Destroy(_fullRender);
+            Destroy(_bustRender);
+            (_fullRender, _bustRender) = (full, bust);
+        };
+
         VRMRenderViewer.Instance.OnAvatarLoaded += avatar =>
         {
             if (!string.IsNullOrEmpty(_avatarMetadata.Id))
@@ -86,6 +93,18 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             };
         };
 
+        VRMRenderViewer.Instance.OnFullRenderTaken += img =>
+        {
+            Destroy(_fullRender);
+            _fullRender = img;
+        };
+
+        VRMRenderViewer.Instance.OnBustRenderTaken += img =>
+        {
+            Destroy(_bustRender);
+            _bustRender = img;
+        };
+
         logger.LogCallComplete();
     }
 
@@ -95,12 +114,8 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
         const int TimeoutMS = 1000 * 60 * 10; // 10 Minutes
 
         logger.LogCallStart();
-        if (!IsReadyForExport)
-        {
-            logger.Log($"Avatar not in state for sharing (model size: {_rawAvatarModel?.Length}, id: {_avatarMetadata.Id}).");
-            await Dialog.Instance.Show("No avatar to share or avatar has not finished loading yet.", Dialog.Options.Confirm, token);
+        if (!await EnsureValidAvatar(token))
             return;
-        }
 
         if (!HttpListener.IsSupported)
         {
@@ -116,7 +131,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             return;
         }
 
-        VRMSharePayload payload = new(_rawAvatarModel!, _avatarMetadata);
+        VRMSharePayload payload = new(_rawAvatarModel!, _avatarMetadata, _fullRender.EncodeToJPG(100), _bustRender.EncodeToJPG(100));
         string[] ips = ipsIE.ToArray();
 
         _ipInfoText.text =
@@ -168,17 +183,12 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             }
 
             logger.Log("Serializing data for sharing.");
-            string payloadJson = JsonConvert.SerializeObject(payload);
-            
-            int payloadSize = Encoding.UTF8.GetByteCount(payloadJson);
-            using NativeArray<byte> payloadArray = new(payloadSize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-
-            int written = Encoding.UTF8.GetBytes(payloadJson, payloadArray);
+            byte[] payloadData = MessagePackSerializer.Serialize(payload);
 
             logger.Log("Sharing data.");
             context.Response.ContentType = "application/json";
-            context.Response.ContentLength64 = written;
-            context.Response.OutputStream.Write(payloadArray.AsReadOnlySpan()[..written]);
+            context.Response.ContentLength64 = payloadData.Length;
+            context.Response.OutputStream.Write(payloadData);
             context.Response.OutputStream.Close();
             listener.Stop();
 
@@ -207,12 +217,8 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
     private async Awaitable SaveAvatarAsync(CancellationToken token)
     {
         logger.LogCallStart();
-        if (!IsReadyForExport)
-        {
-            logger.Log($"Avatar not in state for saving (model size: {_rawAvatarModel?.Length}, id: {_avatarMetadata.Id}).");
-            await Dialog.Instance.Show("No avatar to save or avatar has not finished loading yet.", Dialog.Options.Confirm, token);
+        if (!await EnsureValidAvatar(token))
             return;
-        }
 
         AvMetadata metadata = _avatarMetadata;
         byte[] model = _rawAvatarModel!;
@@ -242,6 +248,8 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             Directory.CreateDirectory(directory);
             await File.WriteAllBytesAsync(Path.Join(directory, "model.vrm"), model, token);
             await File.WriteAllTextAsync(Path.Join(directory, "metadata.json"), JsonConvert.SerializeObject(metadata), token);
+            await File.WriteAllBytesAsync(Path.Join(directory, "full.jpg"), _fullRender.EncodeToJPG(100), token);
+            await File.WriteAllBytesAsync(Path.Join(directory, "bust.jpg"), _bustRender.EncodeToJPG(100), token);
 
             logger.Log("Model saved.");
             await Dialog.Instance.Show("Model successfully saved!", Dialog.Options.Confirm, token);
@@ -255,5 +263,24 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
 
             await Dialog.Instance.Show("Could not save avatar, please try again.", Dialog.Options.Confirm, token);
         }
+    }
+
+    private async Awaitable<bool> EnsureValidAvatar(CancellationToken token)
+    {
+        if (_rawAvatarModel == null)
+        {
+            logger.Log($"Avatar not in state for sharing (model size: {_rawAvatarModel?.Length}).");
+            await Dialog.Instance.Show("No avatar to share/save or avatar has not finished loading yet.", Dialog.Options.Confirm, token);
+            return false;
+        }
+
+        if (!IsReadyForExport)
+        {
+            logger.Log($"Avatar data not in state for sharing, tex1: {_bustRender}, tex2: {_bustRender}, avMetadata: {_avatarMetadata.Id}.");
+            await Dialog.Instance.Show("Please complete your avatar by taking both a full-body and bust image before sharing/saving.", Dialog.Options.Confirm, token);
+            return false;
+        }
+
+        return true;
     }
 }

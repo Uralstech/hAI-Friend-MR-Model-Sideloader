@@ -12,22 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Newtonsoft.Json;
+using MessagePack;
 using Uralstech.AvLoader;
 
 #nullable enable
-[JsonObject]
+[MessagePackObject]
 public class VRMSharePayload
 {
-    [JsonProperty("vrm")]
+    [Key(0)]
     public byte[] ModelData;
 
-    [JsonProperty("metadata")]
+    [Key(1)]
     public AvMetadata AvMetadata;
 
-    public VRMSharePayload(byte[] modelData, AvMetadata avMetadata)
+    [Key(2)]
+    public byte[] FullRender;
+
+    [Key(3)]
+    public byte[] BustRender;
+
+    public VRMSharePayload(byte[] modelData, AvMetadata avMetadata, byte[] fullRender, byte[] bustRender)
     {
         ModelData = modelData;
         AvMetadata = avMetadata;
+        FullRender = fullRender;
+        BustRender = bustRender;
     }
 }

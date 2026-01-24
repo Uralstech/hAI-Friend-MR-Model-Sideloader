@@ -15,6 +15,7 @@
 using System;
 using System.Threading;
 using UnityEngine;
+using UnityEngine.UI;
 using UniVRM10;
 using Uralstech.Utils.Singleton;
 
@@ -22,11 +23,18 @@ using Uralstech.Utils.Singleton;
 public sealed class VRMRenderViewer : DontCreateNewSingleton<VRMRenderViewer>
 {
     public event Action<Vrm10Instance>? OnAvatarLoaded;
+    public event Action<Texture2D>? OnFullRenderTaken;
+    public event Action<Texture2D>? OnBustRenderTaken;
 
     [SerializeField] private RuntimeAnimatorController _animatorController;
+    [SerializeField] private Button _takePicture1;
+    [SerializeField] private Button _takePicture2;
+    [SerializeField] private RawImage _imageView1;
+    [SerializeField] private RawImage _imageView2;
 
     private CustomLogger logger;
     private Vrm10Instance? _model;
+    private Camera _mainCamera;
     private bool _waitShown;
 
     protected override void Awake()
@@ -34,12 +42,17 @@ public sealed class VRMRenderViewer : DontCreateNewSingleton<VRMRenderViewer>
         base.Awake();
         logger = new(this);
         Application.targetFrameRate = 120;
+
+        _takePicture1.onClick.AddListener(() => StartCoroutine(TakePictureAsync(_imageView1, OnFullRenderTaken)));
+        _takePicture2.onClick.AddListener(() => StartCoroutine(TakePictureAsync(_imageView2, OnBustRenderTaken)));
     }
 
     private void Start()
     {
         logger.LogCallStart();
+        _mainCamera = Camera.main;
 
+        VRMFilePicker.Instance.OnAvatarRendersLoaded += (full, bust) => (_imageView1.texture, _imageView2.texture) = (full, bust);
         VRMFilePicker.Instance.OnAvatarLoaded += data => StartCoroutine(LoadAvatarAsync(data, destroyCancellationToken));
         VRMFilePicker.Instance.OnClearLoaded += EnsureModelDestroyed;
         logger.LogCallComplete();
@@ -60,6 +73,26 @@ public sealed class VRMRenderViewer : DontCreateNewSingleton<VRMRenderViewer>
         _model.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
 
         OnAvatarLoaded?.Invoke(_model);
+    }
+
+    private async Awaitable TakePictureAsync(RawImage view, Action<Texture2D>? action)
+    {
+        RenderTexture rt = RenderTexture.GetTemporary(720, 1280, 24, RenderTextureFormat.ARGB32);
+        _mainCamera.targetTexture = rt;
+
+        await Awaitable.NextFrameAsync();
+        RenderTexture.active = rt;
+
+        Texture2D tex = new(rt.width, rt.height, TextureFormat.RGBA32, false);
+        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        tex.Apply();
+
+        RenderTexture.active = null;
+        _mainCamera.targetTexture = null;
+        RenderTexture.ReleaseTemporary(rt);
+
+        view.texture = tex;
+        action?.Invoke(tex);
     }
 
     private void EnsureModelDestroyed()

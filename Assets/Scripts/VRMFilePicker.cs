@@ -18,8 +18,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using SimpleFileBrowser;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.UI;
 using Uralstech.AvLoader;
+using Uralstech.AvLoader.Utils;
 using Uralstech.Utils.Singleton;
 
 #nullable enable
@@ -27,6 +29,7 @@ public sealed class VRMFilePicker : DontCreateNewSingleton<VRMFilePicker>
 {
     public event Action? OnClearLoaded;
     public event Action<byte[]>? OnAvatarLoaded;
+    public event Action<Texture2D, Texture2D>? OnAvatarRendersLoaded;
     public event Action<AvMetadata>? OnAvatarMetadataLoaded;
 
     [SerializeField] private Button _loadAvatarButton;
@@ -114,6 +117,18 @@ public sealed class VRMFilePicker : DontCreateNewSingleton<VRMFilePicker>
             if (AvMetadata.TryCreateFromFile(metadataPath, out AvMetadata? metadata))
                 OnAvatarMetadataLoaded?.Invoke(metadata.Value);
 
+            Texture2D? fullRender = await TryLoadImage(Path.Join(parent, "full.jpg"), token);
+            Texture2D? bustRender = await TryLoadImage(Path.Join(parent, "bust.jpg"), token);
+            if (!fullRender || !bustRender)
+            {
+                Destroy(fullRender);
+                Destroy(bustRender);
+            }
+            else
+            {
+                OnAvatarRendersLoaded?.Invoke(fullRender, bustRender);
+            }
+
             _loadedFile = vrmModelPath;
             call(data);
             
@@ -131,5 +146,16 @@ public sealed class VRMFilePicker : DontCreateNewSingleton<VRMFilePicker>
 
             await Dialog.Instance.Show("Could not load avatar, please try again.", Dialog.Options.Confirm, token);
         }
+    }
+
+    private static async Awaitable<Texture2D?> TryLoadImage(string path, CancellationToken token)
+    {
+        using UnityWebRequest request = UnityWebRequestTexture.GetTexture(new Uri(path));
+
+        using (var _ = token.Register(request.Abort))
+            await request.SendWebRequest();
+            
+        return request.result == UnityWebRequest.Result.Success
+            ? await request.TryGetTextureAsync(token: token) : null;
     }
 }
