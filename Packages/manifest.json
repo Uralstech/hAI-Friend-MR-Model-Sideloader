@@ -5,7 +5,7 @@
     "com.unity.inputsystem": "1.17.0",
     "com.unity.render-pipelines.universal": "17.3.0",
     "com.unity.ugui": "2.0.0",
-    "com.uralstech.avloader": "1.0.0-preview.4",
+    "com.uralstech.avloader": "1.0.0",
     "com.uralstech.utils.singleton": "1.2.1",
     "com.vrmc.vrm": "https://github.com/Uralstech/UniVRM.git?path=Packages/VRM10",
     "com.yasirkula.simplefilebrowser": "1.7.5",

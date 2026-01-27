@@ -37,11 +37,11 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
 
     private byte[]? _rawAvatarModel;
     private Texture2D? _fullRender, _bustRender;
-    private AvMetadata _avatarMetadata;
+    private AvMetadata? _avatarMetadata;
     private CancellationTokenSource? _shareCts;
     private string _sessionAuthCode;
 
-    private bool IsReadyForExport => _rawAvatarModel.IsValid() && _fullRender != null && _bustRender != null && !string.IsNullOrEmpty(_avatarMetadata.Id);
+    private bool IsReadyForExport => _rawAvatarModel.IsValid() && _fullRender != null && _bustRender != null && _avatarMetadata != null;
     
     private CustomLogger logger;
     protected override void Awake()
@@ -69,7 +69,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
         VRMFilePicker.Instance.OnClearLoaded += () =>
         {
             _rawAvatarModel = null;
-            _avatarMetadata = default;
+            _avatarMetadata = null;
         };
 
         VRMFilePicker.Instance.OnAvatarRendersLoaded += (full, bust) =>
@@ -81,12 +81,11 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
 
         VRMRenderViewer.Instance.OnAvatarLoaded += avatar =>
         {
-            if (!string.IsNullOrEmpty(_avatarMetadata.Id))
+            if (_avatarMetadata != null)
                 return;
 
-            _avatarMetadata = new()
+            _avatarMetadata = new(avatar.Vrm.Meta.Name)
             {
-                Id = avatar.Vrm.Meta.Name,
                 Type = AvType.HumanoidFullBody,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
@@ -131,7 +130,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             return;
         }
 
-        VRMSharePayload payload = new(_rawAvatarModel!, _avatarMetadata, _fullRender.EncodeToJPG(100), _bustRender.EncodeToJPG(100));
+        VRMSharePayload payload = new(_rawAvatarModel!, _avatarMetadata!, _fullRender.EncodeToJPG(100), _bustRender.EncodeToJPG(100));
         string[] ips = ipsIE.ToArray();
 
         _ipInfoText.text =
@@ -220,7 +219,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
         if (!await EnsureValidAvatar(token))
             return;
 
-        AvMetadata metadata = _avatarMetadata;
+        AvMetadata metadata = _avatarMetadata!;
         byte[] model = _rawAvatarModel!;
 
         try
@@ -231,7 +230,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
                 logger.Log($"Found existing directory with name: {metadata.Id}");
                 string additionalData = "(model metadata could not be loaded)";
                 if (AvMetadata.TryCreateFromFile(Path.Join(directory, "metadata.json"), out AvMetadata? existing))
-                    additionalData = $"ID: {existing.Value.Id}\nCreated at: {existing.Value.CreatedAt.ToLocalTime():f}\nLast update: {existing.Value.UpdatedAt.ToLocalTime():f}";
+                    additionalData = $"ID: {existing.Id}\nCreated at: {existing.CreatedAt.ToLocalTime():f}\nLast update: {existing.UpdatedAt.ToLocalTime():f}";
 
                 Dialog.Options result = await Dialog.Instance.Show($"Found existing avatar, override?\n{additionalData}", Dialog.Options.Both, token);
                 if (result != Dialog.Options.Confirm)
@@ -276,7 +275,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
 
         if (!IsReadyForExport)
         {
-            logger.Log($"Avatar data not in state for sharing, tex1: {_bustRender}, tex2: {_bustRender}, avMetadata: {_avatarMetadata.Id}.");
+            logger.Log($"Avatar data not in state for sharing, tex1: {_bustRender}, tex2: {_bustRender}, avMetadata: {_avatarMetadata is not null}.");
             await Dialog.Instance.Show("Please complete your avatar by taking both a full-body and bust image before sharing/saving.", Dialog.Options.Confirm, token);
             return false;
         }

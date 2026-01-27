@@ -115,7 +115,7 @@ public sealed class VRMFilePicker : DontCreateNewSingleton<VRMFilePicker>
             string parent = Path.GetDirectoryName(vrmModelPath);
             string metadataPath = Path.Join(parent, "metadata.json");
             if (AvMetadata.TryCreateFromFile(metadataPath, out AvMetadata? metadata))
-                OnAvatarMetadataLoaded?.Invoke(metadata.Value);
+                OnAvatarMetadataLoaded?.Invoke(metadata);
 
             Texture2D? fullRender = await TryLoadImage(Path.Join(parent, "full.jpg"), token);
             Texture2D? bustRender = await TryLoadImage(Path.Join(parent, "bust.jpg"), token);

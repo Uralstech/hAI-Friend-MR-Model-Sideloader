@@ -165,7 +165,7 @@
       }
     },
     "com.uralstech.avloader": {
-      "version": "1.0.0-preview.4",
+      "version": "1.0.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
