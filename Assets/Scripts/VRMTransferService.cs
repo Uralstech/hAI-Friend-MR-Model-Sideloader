@@ -130,7 +130,7 @@ public sealed class VRMTransferService : DontCreateNewSingleton<VRMTransferServi
             return;
         }
 
-        VRMSharePayload payload = new(_rawAvatarModel!, _avatarMetadata!, _fullRender.EncodeToJPG(100), _bustRender.EncodeToJPG(100));
+        VRMSharePayload payload = new(_rawAvatarModel!, JsonConvert.SerializeObject(_avatarMetadata!), _fullRender.EncodeToJPG(100), _bustRender.EncodeToJPG(100));
         string[] ips = ipsIE.ToArray();
 
         _ipInfoText.text =

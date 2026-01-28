@@ -13,7 +13,6 @@
 // limitations under the License.
 
 using MessagePack;
-using Uralstech.AvLoader;
 
 #nullable enable
 [MessagePackObject]
@@ -23,7 +22,7 @@ public class VRMSharePayload
     public byte[] ModelData;
 
     [Key(1)]
-    public AvMetadata AvMetadata;
+    public string AvMetadataJson;
 
     [Key(2)]
     public byte[] FullRender;
@@ -31,10 +30,10 @@ public class VRMSharePayload
     [Key(3)]
     public byte[] BustRender;
 
-    public VRMSharePayload(byte[] modelData, AvMetadata avMetadata, byte[] fullRender, byte[] bustRender)
+    public VRMSharePayload(byte[] modelData, string avMetadataJson, byte[] fullRender, byte[] bustRender)
     {
         ModelData = modelData;
-        AvMetadata = avMetadata;
+        AvMetadataJson = avMetadataJson;
         FullRender = fullRender;
         BustRender = bustRender;
     }
